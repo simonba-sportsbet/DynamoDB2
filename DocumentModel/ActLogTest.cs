@@ -25,12 +25,14 @@ namespace DynamoDB2.DocumentModel
                 await EnsureTables();
 
                 await AddTestBets();
+                await AddTestBetsJson();
                 await GetTestBet();
 
                 await AddTestRecs();
                 await GetTestRecs();
 
                 await GetTestRecsAndBets();
+                await GetTestRecsAndBetsJson();
             }
             catch (AmazonServiceException e) 
             { 
@@ -162,6 +164,49 @@ namespace DynamoDB2.DocumentModel
             });
         }
 
+        private async Task AddTestBetsJson()
+        {
+
+            var betTable = Table.LoadTable(_client, "Bet");
+
+            var json =
+@"
+{
+    ""EventId"" : 123,
+    ""Legs""    : [
+        {
+                ""LegType"" : ""WIN_ONLY"",
+            ""Selection"" : {
+                    ""MarketName"" : ""Point"",
+                ""EventDate""  : 1584144000,
+                ""SubClassName"" : ""TSC"",
+                ""MarketId""     : 787,
+                ""Price""        : {
+                        ""PriceType"" : ""STARTING_PRICE"",
+                    ""DecimalPrice"" : 2.5
+                },
+                ""SelectionName"" : ""James Harden"",
+                ""SubclassId""    : 789,
+                ""EventTypeId""   : 10,
+                ""EventTypeName"" : ""NBA"",
+                ""EventId""       : 123,
+                ""EventName""     : ""Houston Rockets vs Orlando Magic"",
+                ""SelectionId""   : 456
+            }
+            }
+    ],
+    ""CorrelationId"" : ""64f3ef00-0e4b-4252-ae5b-d773ebad5923"",
+    ""BetId""         : ""10"",
+    ""Timestamp""     : 1598877302
+}";
+
+
+            var doc = Document.FromJson(json);
+
+
+            await betTable.PutItemAsync(doc);
+        }
+
         private async Task GetTestBet()
         {
             var betTable = Table.LoadTable(_client, "Bet");
@@ -225,6 +270,28 @@ namespace DynamoDB2.DocumentModel
 
             foreach (var bet in bets)
                 Debug.WriteLine($"{bet.EventId}, {bet.BetId}, {bet.Legs.FirstOrDefault()?.Selection?.Price?.PriceType.ToString() ?? "-"}");
+        }
+
+        private async Task GetTestRecsAndBetsJson()
+        {
+            var eventId = 123;
+            var recId = Guid.Parse("D0E888E1-E0F2-4DE7-9000-0EB6ED0AB9CE");
+
+            var recTable = Table.LoadTable(_client, "Recommendation");
+            var rd = await recTable.GetItemAsync(eventId, recId);
+            var rec = RecommendationSerialiser.UnpackRecommendation(rd);
+
+            var betTable = Table.LoadTable(_client, "Bet");
+            var bg = betTable.CreateBatchGet();
+            foreach (var betId in rec.BetIds)
+                bg.AddKey(rec.EventId, betId);
+
+            await bg.ExecuteAsync();
+
+            var bets = bg.Results.Select(x => x.ToJsonPretty()).ToList();
+
+            foreach (var bet in bets)
+                Debug.WriteLine(bet);
         }
     }
 }
